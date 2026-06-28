@@ -53,10 +53,6 @@ export const Register = () => {
         first_name: trimName,
         username: null,
         language: language,
-      });
-
-      await userQueries.updateProfile(numericId, {
-        first_name: trimName,
         phone: trimPhone,
       });
 

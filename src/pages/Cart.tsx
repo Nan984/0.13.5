@@ -117,10 +117,7 @@ export const Cart = () => {
 
                   {/* Info */}
                   <div className="flex-1 min-w-0">
-                    <h3
-                      className="text-sm font-semibold text-surface-900 dark:text-white truncate cursor-pointer"
-                      onClick={() => navigate(`/catalog`)}
-                    >
+                    <h3 className="text-sm font-semibold text-surface-900 dark:text-white truncate">
                       {getLocalizedValue(item.name, language)}
                     </h3>
 

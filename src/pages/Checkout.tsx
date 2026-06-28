@@ -180,8 +180,7 @@ export const Checkout = () => {
           }
         } catch (paymentError) {
           console.error('Payment error:', paymentError);
-          toast.error(language === 'ru' ? 'Ошибка создания платежа' : "To'lov yaratishda xatolik");
-          setOrderId('');
+          toast.error(language === 'ru' ? 'Ошибка создания платежа. Оплатите при получении.' : "To'lov yaratishda xatolik. Yetkazishda to'lang.");
         }
       }
 

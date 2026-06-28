@@ -194,7 +194,7 @@ export const userQueries = {
     return data;
   },
 
-  upsert: async (telegramId: number, userData: { first_name: string; username?: string | null; language?: string }) => {
+  upsert: async (telegramId: number, userData: { first_name: string; username?: string | null; language?: string; phone?: string }) => {
     if (!isSupabaseConfigured) { await delay(); return { id: `${telegramId}`, telegram_id: telegramId, first_name: userData.first_name, username: userData.username ?? null, language: userData.language ?? 'ru', phone: null, address: null, created_at: new Date().toISOString(), updated_at: new Date().toISOString() }; }
     const { data, error } = await supabase
       .from('users')
@@ -400,7 +400,9 @@ export const reviewQueries = {
       await delay();
       return { ...reviewData, id: `rev-${Date.now()}`, created_at: new Date().toISOString(), is_approved: true, photos: [], images: [], is_verified_purchase: false, admin_reply: null, updated_at: new Date().toISOString(), user_name: reviewData.user_name ?? '' } as Review;
     }
-    return adminQueries.createReview(reviewData) as Promise<Review>;
+    const { data, error } = await supabase.from('reviews').insert(reviewData).select().single();
+    if (error) throw error;
+    return data as Review;
   },
 
   getAverageRating: async (productId: string) => {
@@ -819,16 +821,20 @@ export const favoriteQueries = {
 
   add: async (telegramUserId: number, productId: string) => {
     if (!isSupabaseConfigured) return;
-    try {
-      await adminQueries.addFavorite({ telegram_user_id: telegramUserId, product_id: productId });
-    } catch (e) {
-      if (!(e instanceof Error && e.message.includes('unique'))) throw e;
-    }
+    const { error } = await supabase
+      .from('favorites')
+      .upsert({ telegram_user_id: telegramUserId, product_id: productId }, { onConflict: 'telegram_user_id,product_id', ignoreDuplicates: true });
+    if (error && !error.message.includes('unique')) throw error;
   },
 
   remove: async (telegramUserId: number, productId: string) => {
     if (!isSupabaseConfigured) return;
-    await adminQueries.removeFavorite({ telegram_user_id: telegramUserId, product_id: productId });
+    const { error } = await supabase
+      .from('favorites')
+      .delete()
+      .eq('telegram_user_id', telegramUserId)
+      .eq('product_id', productId);
+    if (error) throw error;
   },
 
   updatePrefs: async (telegramUserId: number, productId: string, prefs: { notify_price?: boolean; notify_stock?: boolean }) => {
@@ -948,7 +954,8 @@ export const couponQueries = {
 
   recordUsage: async (couponId: string, telegramUserId: number, orderId?: string) => {
     if (!isSupabaseConfigured) return;
-    await adminQueries.recordCouponUsage(couponId, telegramUserId, orderId);
+    const { error } = await supabase.from('coupon_usage').insert({ coupon_id: couponId, telegram_user_id: telegramUserId, order_id: orderId ?? null });
+    if (error) throw error;
   },
 
   getAll: async () => {
@@ -984,7 +991,9 @@ export const couponQueries = {
 export const returnQueries = {
   create: async (returnData: Omit<Return, 'id' | 'created_at' | 'updated_at' | 'status' | 'refund_amount' | 'admin_note'>) => {
     if (!isSupabaseConfigured) return { ...returnData, id: `ret-${Date.now()}`, status: 'pending' as const, refund_amount: 0, admin_note: null, created_at: new Date().toISOString(), updated_at: new Date().toISOString() } as Return;
-    return adminQueries.createReturn(returnData) as Promise<Return>;
+    const { data, error } = await supabase.from('returns').insert(returnData).select().single();
+    if (error) throw error;
+    return data as Return;
   },
 
   getByUser: async (telegramUserId: number) => {
@@ -1026,18 +1035,20 @@ export const notificationQueries = {
 
   markAsRead: async (id: string) => {
     if (!isSupabaseConfigured) return;
-    await adminQueries.markNotificationRead(id);
+    const { error } = await supabase.from('notifications').update({ is_read: true }).eq('id', id);
+    if (error) throw error;
   },
 
   markAllAsRead: async (telegramUserId: number) => {
     if (!isSupabaseConfigured) return;
-    const notifications = await adminQueries.getNotifications({ telegram_user_id: telegramUserId, is_read: false }) as Array<{ id: string }>;
-    await Promise.all(notifications.map(n => adminQueries.markNotificationRead(n.id)));
+    const { error } = await supabase.from('notifications').update({ is_read: true }).eq('telegram_user_id', telegramUserId).eq('is_read', false);
+    if (error) throw error;
   },
 
   create: async (notification: Omit<Notification, 'id' | 'created_at' | 'is_read' | 'sent_at'>) => {
     if (!isSupabaseConfigured) return;
-    await adminQueries.createNotification(notification);
+    const { error } = await supabase.from('notifications').insert(notification);
+    if (error) throw error;
   },
 };
 

@@ -348,7 +348,7 @@ export const Orders = () => {
                             quantity: qty,
                             image: item.image || '',
                             size: item.size,
-                            color: item.color ? { name: item.color, hex: '#000000' } : undefined,
+                            color: item.color ? { name: item.color, hex: '' } : undefined,
                           });
                           addedCount++;
                         }
