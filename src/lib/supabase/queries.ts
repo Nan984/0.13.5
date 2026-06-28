@@ -196,20 +196,24 @@ export const userQueries = {
 
   upsert: async (telegramId: number, userData: { first_name: string; username?: string | null; language?: string }) => {
     if (!isSupabaseConfigured) { await delay(); return { id: `${telegramId}`, telegram_id: telegramId, first_name: userData.first_name, username: userData.username ?? null, language: userData.language ?? 'ru', phone: null, address: null, created_at: new Date().toISOString(), updated_at: new Date().toISOString() }; }
-    const existing = await userQueries.getByTelegramId(telegramId);
-    if (existing) {
-      return adminQueries.updateUser(existing.id, { ...userData, updated_at: new Date().toISOString() }) as Promise<User>;
-    }
-    return adminQueries.upsertUser({ telegram_id: telegramId, ...userData }) as Promise<User>;
+    const { data, error } = await supabase
+      .from('users')
+      .upsert({ telegram_id: telegramId, ...userData, updated_at: new Date().toISOString() }, { onConflict: 'telegram_id' })
+      .select()
+      .single();
+    if (error) throw error;
+    return data as User;
   },
 
   updateProfile: async (telegramId: number, updates: { phone?: string; address?: string; first_name?: string }) => {
     if (!isSupabaseConfigured) { await delay(); return { id: `${telegramId}`, telegram_id: telegramId, first_name: updates.first_name || 'Гость', username: null, language: 'ru', phone: updates.phone ?? null, address: updates.address ?? null, created_at: new Date().toISOString(), updated_at: new Date().toISOString() }; }
-    const existing = await userQueries.getByTelegramId(telegramId);
-    if (existing) {
-      return adminQueries.updateUser(existing.id, { ...updates, updated_at: new Date().toISOString() }) as Promise<User>;
-    }
-    return adminQueries.upsertUser({ telegram_id: telegramId, ...updates }) as Promise<User>;
+    const { data, error } = await supabase
+      .from('users')
+      .upsert({ telegram_id: telegramId, ...updates, updated_at: new Date().toISOString() }, { onConflict: 'telegram_id' })
+      .select()
+      .single();
+    if (error) throw error;
+    return data as User;
   },
 };
 
