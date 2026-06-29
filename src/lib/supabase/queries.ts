@@ -429,23 +429,13 @@ export const reviewQueries = {
       await delay();
       return URL.createObjectURL(file);
     }
-    const fileExt = file.name.split('.').pop();
-    const fileName = `review-${Date.now()}-${Math.random().toString(36).substring(2)}.${fileExt}`;
+    const fileExt = file.name.split('.').pop()?.toLowerCase() || 'jpg';
+    const fileName = `${Date.now()}-${Math.random().toString(36).substring(2)}.${fileExt}`;
     const filePath = `reviews/${fileName}`;
-    const fallbackPath = fileName;
 
-    const buckets = ['review-photos', 'product-images'];
-    for (const bucket of buckets) {
-      const { error } = await supabase.storage.from(bucket).upload(filePath, file);
-      if (!error) {
-        const { data: { publicUrl } } = supabase.storage.from(bucket).getPublicUrl(filePath);
-        return publicUrl;
-      }
-    }
-
-    const { error: lastErr } = await supabase.storage.from('review-photos').upload(fallbackPath, file);
-    if (lastErr) throw lastErr;
-    const { data: { publicUrl } } = supabase.storage.from('review-photos').getPublicUrl(fallbackPath);
+    const { error } = await supabase.storage.from('review-photos').upload(filePath, file, { upsert: false });
+    if (error) throw error;
+    const { data: { publicUrl } } = supabase.storage.from('review-photos').getPublicUrl(filePath);
     return publicUrl;
   },
 
@@ -989,6 +979,20 @@ export const couponQueries = {
 };
 
 export const returnQueries = {
+  uploadPhoto: async (file: File) => {
+    if (!isSupabaseConfigured) {
+      await delay();
+      return URL.createObjectURL(file);
+    }
+    const fileExt = file.name.split('.').pop()?.toLowerCase() || 'jpg';
+    const fileName = `${Date.now()}-${Math.random().toString(36).substring(2)}.${fileExt}`;
+    const filePath = `returns/${fileName}`;
+    const { error } = await supabase.storage.from('return-photos').upload(filePath, file, { upsert: false });
+    if (error) throw error;
+    const { data: { publicUrl } } = supabase.storage.from('return-photos').getPublicUrl(filePath);
+    return publicUrl;
+  },
+
   create: async (returnData: Omit<Return, 'id' | 'created_at' | 'updated_at' | 'status' | 'refund_amount' | 'admin_note'>) => {
     if (!isSupabaseConfigured) return { ...returnData, id: `ret-${Date.now()}`, status: 'pending' as const, refund_amount: 0, admin_note: null, created_at: new Date().toISOString(), updated_at: new Date().toISOString() } as Return;
     const { data, error } = await supabase.from('returns').insert(returnData).select().single();

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Package, Radio, RotateCcw, X, ShoppingBag, Search } from 'lucide-react';
+import { Package, Radio, RotateCcw, X, ShoppingBag, Search, Camera } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
 import { Layout } from '../components/Layout';
@@ -12,6 +12,7 @@ import { formatPrice, getLocalizedValue, formatDateTime } from '../lib/utils';
 import { getTelegramUser, haptic } from '../lib/telegram';
 import { getStatusColor, getStatusLabel } from '../lib/orderStatuses';
 import { returnQueries } from '../lib/supabase/queries';
+import { useUploadReturnPhoto } from '../lib/supabase/hooks';
 import { toast } from '../components/Toast';
 import type { OrderItem } from '../lib/supabase';
 import type { Order } from '../lib/supabase/queries';
@@ -47,6 +48,10 @@ export const Orders = () => {
   const [returnModal, setReturnModal] = useState<{ order: Order; selectedItems: number[] } | null>(null);
   const [returnReason, setReturnReason] = useState('');
   const [returnLoading, setReturnLoading] = useState(false);
+  const [returnPhotos, setReturnPhotos] = useState<string[]>([]);
+  const [returnPhotoUploading, setReturnPhotoUploading] = useState(false);
+  const returnPhotoInputRef = useRef<HTMLInputElement>(null);
+  const uploadReturnPhoto = useUploadReturnPhoto();
 
   useEffect(() => {
     if (!userId) return;
@@ -96,6 +101,22 @@ export const Orders = () => {
     return daysDiff <= 14;
   };
 
+  const handleReturnPhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
+    setReturnPhotoUploading(true);
+    try {
+      const toUpload = Array.from(files).slice(0, 5 - returnPhotos.length);
+      const urls = await Promise.all(toUpload.map(f => uploadReturnPhoto.mutateAsync(f)));
+      setReturnPhotos(prev => [...prev, ...urls].slice(0, 5));
+    } catch {
+      toast.error(language === 'ru' ? 'Ошибка загрузки фото' : 'Fotosni yuklashda xatolik');
+    } finally {
+      setReturnPhotoUploading(false);
+      if (returnPhotoInputRef.current) returnPhotoInputRef.current.value = '';
+    }
+  };
+
   const handleReturnSubmit = async () => {
     if (!returnModal || !userId) return;
     if (!returnReason.trim()) {
@@ -123,11 +144,13 @@ export const Orders = () => {
           price: item.price,
         })),
         reason: returnReason.trim(),
+        photos: returnPhotos,
       });
 
       toast.success(language === 'ru' ? 'Заявка на возврат отправлена' : "Qaytarish so'rovi yuborildi");
       setReturnModal(null);
       setReturnReason('');
+      setReturnPhotos([]);
     } catch {
       toast.error(language === 'ru' ? 'Ошибка отправки заявки' : "So'rovni yuborishda xatolik");
     } finally {
@@ -381,7 +404,7 @@ export const Orders = () => {
               <h2 className="text-lg font-bold text-surface-900 dark:text-white">
                 {language === 'ru' ? 'Возврат товара' : "Mahsulotni qaytarish"}
               </h2>
-              <button onClick={() => setReturnModal(null)} className="p-2 rounded-lg hover:bg-surface-100 dark:hover:bg-surface-700">
+              <button onClick={() => { setReturnModal(null); setReturnPhotos([]); setReturnReason(''); }} className="p-2 rounded-lg hover:bg-surface-100 dark:hover:bg-surface-700">
                 <X className="w-5 h-5" />
               </button>
             </div>
@@ -431,6 +454,52 @@ export const Orders = () => {
                 rows={3}
                 className="w-full px-4 py-3 rounded-xl border border-surface-200 dark:border-surface-600 bg-white dark:bg-surface-700 text-surface-900 dark:text-white text-sm resize-none focus:ring-2 focus:ring-surface-900 focus:border-transparent outline-none"
                 placeholder={language === 'ru' ? 'Опишите причину...' : 'Sababni yozing...'}
+              />
+            </div>
+
+            <div className="mb-5">
+              <label className="text-xs font-semibold text-surface-500 uppercase tracking-wide mb-2 block">
+                {language === 'ru' ? 'Фото дефекта (необязательно)' : "Nuqson fotosi (ixtiyoriy)"}
+              </label>
+              {returnPhotos.length > 0 && (
+                <div className="flex flex-wrap gap-2 mb-3">
+                  {returnPhotos.map((url, i) => (
+                    <div key={i} className="relative w-20 h-20 rounded-xl overflow-hidden border border-surface-200 dark:border-surface-600">
+                      <img src={url} alt="" className="w-full h-full object-cover" />
+                      <button
+                        onClick={() => setReturnPhotos(prev => prev.filter((_, j) => j !== i))}
+                        className="absolute top-1 right-1 w-5 h-5 bg-black/60 rounded-full flex items-center justify-center"
+                      >
+                        <X className="w-3 h-3 text-white" />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+              {returnPhotos.length < 5 && (
+                <button
+                  type="button"
+                  onClick={() => returnPhotoInputRef.current?.click()}
+                  disabled={returnPhotoUploading}
+                  className="flex items-center gap-2 px-4 py-2.5 rounded-xl border border-dashed border-surface-300 dark:border-surface-600 text-sm text-surface-600 dark:text-surface-400 hover:bg-surface-50 dark:hover:bg-surface-700 transition disabled:opacity-50"
+                >
+                  {returnPhotoUploading
+                    ? <span className="w-4 h-4 border-2 border-surface-400 border-t-surface-800 rounded-full animate-spin" />
+                    : <Camera className="w-4 h-4" />
+                  }
+                  {returnPhotoUploading
+                    ? (language === 'ru' ? 'Загрузка...' : 'Yuklanmoqda...')
+                    : (language === 'ru' ? 'Добавить фото' : "Foto qo'shish")
+                  }
+                </button>
+              )}
+              <input
+                ref={returnPhotoInputRef}
+                type="file"
+                accept="image/*"
+                multiple
+                className="hidden"
+                onChange={handleReturnPhotoUpload}
               />
             </div>
 

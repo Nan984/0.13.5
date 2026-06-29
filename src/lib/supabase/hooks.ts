@@ -542,6 +542,12 @@ export const useDeleteCoupon = () => {
 };
 
 // Returns
+export const useUploadReturnPhoto = () => {
+  return useMutation({
+    mutationFn: (file: File) => returnQueries.uploadPhoto(file),
+  });
+};
+
 export const useCreateReturn = () => {
   const queryClient = useQueryClient();
   return useMutation({

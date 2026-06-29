@@ -252,6 +252,7 @@ export type Database = {
           status: 'pending' | 'approved' | 'rejected' | 'refunded';
           refund_amount: number;
           admin_note: string | null;
+          photos: string[];
           created_at: string;
           updated_at: string;
         };
