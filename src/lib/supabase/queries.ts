@@ -400,9 +400,9 @@ export const reviewQueries = {
       await delay();
       return { ...reviewData, id: `rev-${Date.now()}`, created_at: new Date().toISOString(), is_approved: true, photos: [], images: [], is_verified_purchase: false, admin_reply: null, updated_at: new Date().toISOString(), user_name: reviewData.user_name ?? '' } as Review;
     }
-    const { data, error } = await supabase.from('reviews').insert(reviewData).select().single();
+    const { error } = await supabase.from('reviews').insert(reviewData);
     if (error) throw error;
-    return data as Review;
+    return { ...reviewData, id: `rev-${Date.now()}`, created_at: new Date().toISOString(), updated_at: new Date().toISOString() } as Review;
   },
 
   getAverageRating: async (productId: string) => {
