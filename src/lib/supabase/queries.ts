@@ -452,25 +452,19 @@ export const reviewQueries = {
 
   getAllWithProductNames: async () => {
     if (!isSupabaseConfigured) return [];
-    const { data: reviews, error: revError } = await supabase
-      .from('reviews')
-      .select('*')
-      .order('created_at', { ascending: false })
-      .limit(200);
-    if (revError) throw revError;
+    const reviews = await adminQueries.getReviews();
+    if (!reviews || reviews.length === 0) return [];
 
-    const productIds = [...new Set((reviews ?? []).map(r => r.product_id))];
-    if (productIds.length === 0) return [];
-
+    const productIds = [...new Set((reviews as Review[]).map((r: Review) => r.product_id))];
     const { data: products } = await supabase
       .from('products')
       .select('id, name')
       .in('id', productIds);
 
     const productMap: Record<string, { ru: string; uz: string }> = {};
-    (products ?? []).forEach(p => { productMap[p.id] = p.name; });
+    (products ?? []).forEach((p: { id: string; name: { ru: string; uz: string } }) => { productMap[p.id] = p.name; });
 
-    return (reviews ?? []).map(r => ({
+    return (reviews as Review[]).map((r: Review) => ({
       ...r,
       product_name: productMap[r.product_id] ?? { ru: 'Удалён', uz: 'O\'chirilgan' },
     }));

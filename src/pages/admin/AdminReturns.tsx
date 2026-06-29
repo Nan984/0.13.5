@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
-import { ArrowLeft, RotateCcw, Check, X } from 'lucide-react';
+import { ArrowLeft, RotateCcw, Check, X, ZoomIn } from 'lucide-react';
 import { useAllReturns, useUpdateReturnStatus, useAdjustStock } from '../../lib/supabase/hooks';
 import { toast } from '../../components/Toast';
 import { auditLogQueries } from '../../lib/supabase/queries';
@@ -29,6 +29,7 @@ export const AdminReturns = () => {
   const adjustStock = useAdjustStock();
   
   const [adminNote, setAdminNote] = useState('');
+  const [lightboxUrl, setLightboxUrl] = useState<string | null>(null);
 
   const handleStatusUpdate = async (id: string, status: Return['status']) => {
     const ret = returns.find(r => r.id === id);
@@ -99,6 +100,28 @@ export const AdminReturns = () => {
               <p className="text-sm text-surface-700 dark:text-surface-300 mb-2">
                 <span className="text-surface-500">Причина:</span> {ret.reason}
               </p>
+
+              {/* Photos from customer */}
+              {Array.isArray((ret as Return & { photos?: string[] }).photos) && ((ret as Return & { photos?: string[] }).photos ?? []).length > 0 && (
+                <div className="mb-3">
+                  <p className="text-xs text-surface-500 mb-1.5">Фото от клиента:</p>
+                  <div className="flex gap-2 flex-wrap">
+                    {((ret as Return & { photos?: string[] }).photos ?? []).map((url: string, i: number) => (
+                      <button
+                        key={i}
+                        onClick={() => setLightboxUrl(url)}
+                        className="relative w-16 h-16 rounded-xl overflow-hidden border border-surface-200 dark:border-surface-600 group"
+                      >
+                        <img src={url} alt="" className="w-full h-full object-cover" />
+                        <div className="absolute inset-0 bg-black/30 opacity-0 group-hover:opacity-100 transition flex items-center justify-center">
+                          <ZoomIn className="w-4 h-4 text-white" />
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
               {ret.admin_note && (
                 <p className="text-xs text-surface-500 mb-2 italic">Комментарий: {ret.admin_note}</p>
               )}
@@ -127,6 +150,22 @@ export const AdminReturns = () => {
           ))
         )}
       </main>
+
+      {/* Lightbox */}
+      {lightboxUrl && (
+        <div
+          className="fixed inset-0 z-50 bg-black/90 flex items-center justify-center p-4"
+          onClick={() => setLightboxUrl(null)}
+        >
+          <img src={lightboxUrl} alt="" className="max-w-full max-h-full rounded-xl object-contain" />
+          <button
+            onClick={() => setLightboxUrl(null)}
+            className="absolute top-4 right-4 w-9 h-9 rounded-full bg-white/10 flex items-center justify-center text-white hover:bg-white/20 transition"
+          >
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+      )}
     </div>
   );
 };
