@@ -3,7 +3,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import {
   Package, ShoppingBag, DollarSign, LogOut, Users, TrendingUp,
   Image, BarChart2, ArrowUpRight, ShoppingCart, Truck, Calendar,
-  Tag, RotateCcw, Shield, FolderTree, MessageSquare, Layers,
+  Tag, RotateCcw, Shield, FolderTree, MessageSquare, Layers, Bell,
 } from 'lucide-react';
 import {
   getCurrentAdmin, logoutAdmin,
@@ -74,6 +74,20 @@ export const AdminDashboard = () => {
   const [stats, setStats] = useState<DashStats>(EMPTY_STATS);
   const [loading, setLoading] = useState(true);
   const [period, setPeriod] = useState<Period>('7d');
+  const [pendingCounts, setPendingCounts] = useState({ orders: 0, reviews: 0, returns: 0 });
+
+  const loadPendingCounts = useCallback(async () => {
+    const [ordersRes, reviewsRes, returnsRes] = await Promise.all([
+      supabase.from('orders').select('id', { count: 'exact', head: true }).eq('status', 'pending'),
+      supabase.from('reviews').select('id', { count: 'exact', head: true }).eq('is_approved', false),
+      supabase.from('returns').select('id', { count: 'exact', head: true }).eq('status', 'pending'),
+    ]);
+    setPendingCounts({
+      orders: ordersRes.count ?? 0,
+      reviews: reviewsRes.count ?? 0,
+      returns: returnsRes.count ?? 0,
+    });
+  }, []);
 
   const loadStats = useCallback(async () => {
     setLoading(true);
@@ -164,7 +178,13 @@ export const AdminDashboard = () => {
     }
   }, [period]);
 
-  useEffect(() => { loadStats(); }, [loadStats]);
+  useEffect(() => { loadStats(); loadPendingCounts(); }, [loadStats, loadPendingCounts]);
+
+  // Refresh pending counts every 30s
+  useEffect(() => {
+    const t = setInterval(loadPendingCounts, 30_000);
+    return () => clearInterval(t);
+  }, [loadPendingCounts]);
 
   const handleLogout = () => { logoutAdmin(); navigate('/admin'); };
 
@@ -191,6 +211,14 @@ export const AdminDashboard = () => {
             </div>
           </div>
           <div className="flex items-center gap-4">
+            {(pendingCounts.orders + pendingCounts.reviews + pendingCounts.returns) > 0 && (
+              <Link to="/admin/orders" className="relative">
+                <Bell className="w-5 h-5 text-surface-600 dark:text-surface-400" />
+                <span className="absolute -top-1.5 -right-1.5 w-4 h-4 bg-red-500 rounded-full text-white text-2xs font-bold flex items-center justify-center leading-none">
+                  {pendingCounts.orders + pendingCounts.reviews + pendingCounts.returns}
+                </span>
+              </Link>
+            )}
             <div className="text-right hidden sm:block">
               <p className="text-sm font-semibold text-surface-900 dark:text-white leading-none">{admin.first_name}</p>
               <p className="text-xs mt-0.5">
@@ -217,6 +245,49 @@ export const AdminDashboard = () => {
       </header>
 
       <main className="max-w-7xl mx-auto px-4 sm:px-6 py-8 space-y-6">
+
+        {/* Pending alerts */}
+        {(pendingCounts.orders > 0 || pendingCounts.reviews > 0 || pendingCounts.returns > 0) && (
+          <div className="flex flex-wrap gap-3">
+            {pendingCounts.orders > 0 && (
+              <Link to="/admin/orders" className="flex items-center gap-2.5 px-4 py-2.5 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700 rounded-xl hover:bg-amber-100 dark:hover:bg-amber-900/30 transition group">
+                <div className="w-7 h-7 rounded-lg bg-amber-500 flex items-center justify-center flex-shrink-0">
+                  <Package className="w-4 h-4 text-white" />
+                </div>
+                <div>
+                  <p className="text-xs text-amber-700 dark:text-amber-400 font-semibold">Новые заказы</p>
+                  <p className="text-lg font-bold text-amber-900 dark:text-amber-300 leading-none">{pendingCounts.orders}</p>
+                </div>
+                <ArrowUpRight className="w-4 h-4 text-amber-500 ml-1 opacity-0 group-hover:opacity-100 transition" />
+              </Link>
+            )}
+            {pendingCounts.reviews > 0 && (
+              <Link to="/admin/reviews" className="flex items-center gap-2.5 px-4 py-2.5 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-700 rounded-xl hover:bg-blue-100 dark:hover:bg-blue-900/30 transition group">
+                <div className="w-7 h-7 rounded-lg bg-blue-500 flex items-center justify-center flex-shrink-0">
+                  <MessageSquare className="w-4 h-4 text-white" />
+                </div>
+                <div>
+                  <p className="text-xs text-blue-700 dark:text-blue-400 font-semibold">Отзывы на модерации</p>
+                  <p className="text-lg font-bold text-blue-900 dark:text-blue-300 leading-none">{pendingCounts.reviews}</p>
+                </div>
+                <ArrowUpRight className="w-4 h-4 text-blue-500 ml-1 opacity-0 group-hover:opacity-100 transition" />
+              </Link>
+            )}
+            {pendingCounts.returns > 0 && (
+              <Link to="/admin/returns" className="flex items-center gap-2.5 px-4 py-2.5 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-700 rounded-xl hover:bg-red-100 dark:hover:bg-red-900/30 transition group">
+                <div className="w-7 h-7 rounded-lg bg-red-500 flex items-center justify-center flex-shrink-0">
+                  <RotateCcw className="w-4 h-4 text-white" />
+                </div>
+                <div>
+                  <p className="text-xs text-red-700 dark:text-red-400 font-semibold">Заявки на возврат</p>
+                  <p className="text-lg font-bold text-red-900 dark:text-red-300 leading-none">{pendingCounts.returns}</p>
+                </div>
+                <ArrowUpRight className="w-4 h-4 text-red-500 ml-1 opacity-0 group-hover:opacity-100 transition" />
+              </Link>
+            )}
+          </div>
+        )}
+
         <div className="flex items-center justify-between">
           <h2 className="text-lg font-bold text-surface-900 dark:text-white">Обзор</h2>
           <div className="flex items-center gap-1 bg-white dark:bg-surface-800 border border-surface-200 dark:border-surface-700 rounded-xl p-1">

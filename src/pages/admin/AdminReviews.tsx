@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { ArrowLeft, Star, MessageSquare, Check, X, ChevronDown, LogOut } from 'lucide-react';
+import { ArrowLeft, Star, MessageSquare, Check, X, ChevronDown, LogOut, ZoomIn } from 'lucide-react';
+import { toast } from '../../components/Toast';
 import { useAllReviews, useApproveReview, useRejectReview, useReplyToReview } from '../../lib/supabase/hooks';
 import { getCurrentAdmin, logoutAdmin, ROLE_LABELS } from '../../lib/auth';
 import { getLocalizedValue } from '../../lib/utils';
@@ -20,6 +21,7 @@ export const AdminReviews = () => {
   const [replyingId, setReplyingId] = useState<string | null>(null);
   const [replyText, setReplyText] = useState('');
   const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [lightboxUrl, setLightboxUrl] = useState<string | null>(null);
 
   if (!admin) return null;
 
@@ -40,30 +42,33 @@ export const AdminReviews = () => {
   };
 
   const handleApprove = async (id: string) => {
-    await approveReview.mutateAsync(id);
-    auditLogQueries.log({
-      admin_id: admin.id,
-      action: 'update',
-      entity_type: 'reviews',
-      entity_id: id,
-      details: { action: 'approved' },
-    }).catch(() => {});
+    try {
+      await approveReview.mutateAsync(id);
+      toast.success('Отзыв одобрен');
+      auditLogQueries.log({ admin_id: admin.id, action: 'update', entity_type: 'reviews', entity_id: id, details: { action: 'approved' } }).catch(() => {});
+    } catch {
+      toast.error('Ошибка при одобрении отзыва');
+    }
   };
 
   const handleReject = async (id: string) => {
-    await rejectReview.mutateAsync(id);
-    auditLogQueries.log({
-      admin_id: admin.id,
-      action: 'update',
-      entity_type: 'reviews',
-      entity_id: id,
-      details: { action: 'rejected' },
-    }).catch(() => {});
+    try {
+      await rejectReview.mutateAsync(id);
+      toast.success('Отзыв скрыт');
+      auditLogQueries.log({ admin_id: admin.id, action: 'update', entity_type: 'reviews', entity_id: id, details: { action: 'rejected' } }).catch(() => {});
+    } catch {
+      toast.error('Ошибка при отклонении отзыва');
+    }
   };
 
   const handleReply = async (id: string) => {
     if (!replyText.trim()) return;
-    await replyToReview.mutateAsync({ id, reply: replyText.trim() });
+    try {
+      await replyToReview.mutateAsync({ id, reply: replyText.trim() });
+      toast.success('Ответ сохранён');
+    } catch {
+      toast.error('Ошибка при сохранении ответа');
+    }
     setReplyingId(null);
     setReplyText('');
     auditLogQueries.log({
@@ -207,12 +212,16 @@ export const AdminReviews = () => {
                     {photos.length > 0 && (
                       <div className="flex gap-2 mt-3 overflow-x-auto">
                         {photos.map((photo: string, i: number) => (
-                          <div
+                          <button
                             key={i}
-                            className="relative flex-shrink-0 w-16 h-16 rounded-lg overflow-hidden bg-surface-100 dark:bg-surface-700"
+                            onClick={() => setLightboxUrl(photo)}
+                            className="relative flex-shrink-0 w-16 h-16 rounded-lg overflow-hidden bg-surface-100 dark:bg-surface-700 group"
                           >
                             <img src={photo} alt="" className="w-full h-full object-cover" />
-                          </div>
+                            <div className="absolute inset-0 bg-black/30 opacity-0 group-hover:opacity-100 transition flex items-center justify-center">
+                              <ZoomIn className="w-4 h-4 text-white" />
+                            </div>
+                          </button>
                         ))}
                       </div>
                     )}
@@ -302,6 +311,15 @@ export const AdminReviews = () => {
           </div>
         )}
       </main>
+
+      {lightboxUrl && (
+        <div className="fixed inset-0 z-50 bg-black/90 flex items-center justify-center p-4" onClick={() => setLightboxUrl(null)}>
+          <img src={lightboxUrl} alt="" className="max-w-full max-h-full rounded-xl object-contain" />
+          <button onClick={() => setLightboxUrl(null)} className="absolute top-4 right-4 w-9 h-9 rounded-full bg-white/10 flex items-center justify-center text-white hover:bg-white/20 transition">
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+      )}
     </div>
   );
 };

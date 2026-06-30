@@ -118,14 +118,12 @@ Deno.serve(async (req: Request) => {
           result = { success: true };
         } else {
           if (!id) throw new Error("ID required for update");
-          const { data: updated, error } = await supabase
+          const { error } = await supabase
             .from(table)
             .update({ ...data, updated_at: new Date().toISOString() })
-            .eq("id", id)
-            .select()
-            .single();
+            .eq("id", id);
           if (error) throw error;
-          result = updated;
+          result = { success: true };
         }
         break;
       }

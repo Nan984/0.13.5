@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { ArrowLeft, Minus, Plus, ShoppingCart, Share2, Star, ChevronLeft, ChevronRight, Camera, X, Send, MessageSquare } from 'lucide-react';
+import { ArrowLeft, Minus, Plus, ShoppingCart, Share2, Star, ChevronLeft, ChevronRight, Camera, X, Send, MessageSquare, ZoomIn } from 'lucide-react';
 import { Layout } from '../components/Layout';
 import { useTranslation } from '../hooks/useTranslation';
 import { useCartStore } from '../store/useCartStore';
@@ -47,6 +47,7 @@ export const ProductDetail = () => {
   const [reviewSubmitting, setReviewSubmitting] = useState(false);
   const [reviewSubmitted, setReviewSubmitted] = useState(false);
   const [hoverRating, setHoverRating] = useState(0);
+  const [lightboxUrl, setLightboxUrl] = useState<string | null>(null);
   const reviewPhotoInput = useRef<HTMLInputElement>(null);
   const viewsIncrementedRef = useRef<string | null>(null);
 
@@ -217,6 +218,7 @@ export const ProductDetail = () => {
   const images = product.images.length > 0 ? product.images : [''];
 
   return (
+    <>
     <Layout showBottomNav={false}>
       <div className="bg-surface-50 min-h-screen pb-28">
 
@@ -501,9 +503,12 @@ export const ProductDetail = () => {
                       {photos.length > 0 && (
                         <div className="flex gap-2 mt-3 overflow-x-auto">
                           {photos.map((photo: string, i: number) => (
-                            <div key={i} className="flex-shrink-0 w-16 h-16 rounded-lg overflow-hidden bg-surface-200 dark:bg-surface-600">
+                            <button key={i} onClick={() => setLightboxUrl(photo)} className="flex-shrink-0 w-16 h-16 rounded-lg overflow-hidden bg-surface-200 dark:bg-surface-600 group relative">
                               <img src={photo} alt="" className="w-full h-full object-cover" />
-                            </div>
+                              <div className="absolute inset-0 bg-black/25 opacity-0 group-hover:opacity-100 transition flex items-center justify-center">
+                                <ZoomIn className="w-4 h-4 text-white" />
+                              </div>
+                            </button>
                           ))}
                         </div>
                       )}
@@ -722,5 +727,15 @@ export const ProductDetail = () => {
         </div>
       </div>
     </Layout>
+
+      {lightboxUrl && (
+        <div className="fixed inset-0 z-50 bg-black/90 flex items-center justify-center p-4" onClick={() => setLightboxUrl(null)}>
+          <img src={lightboxUrl} alt="" className="max-w-full max-h-full rounded-xl object-contain" />
+          <button onClick={() => setLightboxUrl(null)} className="absolute top-4 right-4 w-9 h-9 rounded-full bg-white/10 flex items-center justify-center text-white hover:bg-white/20 transition">
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+      )}
+    </>
   );
 };
