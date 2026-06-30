@@ -7,6 +7,38 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "Content-Type, Authorization, X-Client-Info, Apikey",
 };
 
+const ALLOWED_TABLES = [
+  "products", "categories", "orders", "users", "banners",
+  "delivery_zones", "coupons", "coupon_usage", "returns",
+  "reviews", "audit_log", "admin_accounts", "product_collections",
+  "promotions", "favorites", "notifications", "product_relations",
+  "referrals",
+];
+
+// Tables that only require read (no session needed for SELECT)
+// ALL mutations require a valid admin session token
+const MUTATION_ACTIONS = ["insert", "update", "delete", "updateOrderStatus"];
+
+async function verifyAdminSession(
+  supabase: ReturnType<typeof createClient>,
+  admin_session: { admin_id: string; token: string } | undefined
+): Promise<{ ok: boolean; error?: string }> {
+  if (!admin_session?.admin_id || !admin_session?.token) {
+    return { ok: false, error: "Admin session required" };
+  }
+  const { data } = await supabase
+    .from("admin_accounts")
+    .select("id, is_active")
+    .eq("id", admin_session.admin_id)
+    .eq("session_token", admin_session.token)
+    .eq("is_active", true)
+    .maybeSingle();
+  if (!data) {
+    return { ok: false, error: "Invalid or expired admin session" };
+  }
+  return { ok: true };
+}
+
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { status: 200, headers: corsHeaders });
@@ -18,7 +50,8 @@ Deno.serve(async (req: Request) => {
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? ""
     );
 
-    const { action, table, data, filters, id, admin_session } = await req.json();
+    const body = await req.json();
+    const { action, table, data, filters, id, admin_session } = body;
 
     if (!action || !table) {
       return new Response(
@@ -27,13 +60,6 @@ Deno.serve(async (req: Request) => {
       );
     }
 
-    // Whitelist of allowed tables
-    const ALLOWED_TABLES = [
-      'products', 'categories', 'orders', 'users', 'banners',
-      'delivery_zones', 'coupons', 'coupon_usage', 'returns',
-      'reviews', 'audit_log', 'admin_accounts', 'product_collections',
-      'promotions', 'favorites', 'notifications', 'product_relations',
-    ];
     if (!ALLOWED_TABLES.includes(table)) {
       return new Response(
         JSON.stringify({ error: "Table not allowed" }),
@@ -41,27 +67,12 @@ Deno.serve(async (req: Request) => {
       );
     }
 
-    // Authorization: mutations on sensitive tables require valid admin session
-    const SENSITIVE_TABLES = ["admin_accounts", "audit_log", "notifications"];
-    const MUTATION_ACTIONS = ["insert", "update", "delete", "updateOrderStatus"];
-    if (MUTATION_ACTIONS.includes(action) && SENSITIVE_TABLES.includes(table)) {
-      if (!admin_session) {
+    // ALL mutation actions require a valid admin session
+    if (MUTATION_ACTIONS.includes(action)) {
+      const check = await verifyAdminSession(supabase, admin_session);
+      if (!check.ok) {
         return new Response(
-          JSON.stringify({ error: "Admin session required for this operation" }),
-          { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-        );
-      }
-      // Verify admin session token
-      const { data: adminAccount } = await supabase
-        .from("admin_accounts")
-        .select("id, is_active")
-        .eq("id", admin_session.admin_id)
-        .eq("session_token", admin_session.token_hash)
-        .eq("is_active", true)
-        .maybeSingle();
-      if (!adminAccount) {
-        return new Response(
-          JSON.stringify({ error: "Invalid admin session" }),
+          JSON.stringify({ error: check.error }),
           { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
         );
       }
@@ -75,16 +86,16 @@ Deno.serve(async (req: Request) => {
         if (filters) {
           for (const [key, value] of Object.entries(filters)) {
             if (value !== undefined && value !== null) {
-              query = query.eq(key, value);
+              query = query.eq(key, value as string);
             }
           }
         }
         if (table === "orders") {
-          query = query.order("created_at", { ascending: false }).range(0, 199);
+          query = query.order("created_at", { ascending: false }).range(0, 499);
         } else if (table === "audit_log") {
-          query = query.order("created_at", { ascending: false }).limit(100);
+          query = query.order("created_at", { ascending: false }).limit(200);
         } else {
-          query = query.range(0, 499);
+          query = query.order("created_at", { ascending: false }).range(0, 499);
         }
         const { data: rows, error } = await query;
         if (error) throw error;
@@ -110,7 +121,7 @@ Deno.serve(async (req: Request) => {
             .update({ ...data, updated_at: new Date().toISOString() });
           for (const [key, value] of Object.entries(filters)) {
             if (value !== undefined && value !== null) {
-              query = query.eq(key, value);
+              query = query.eq(key, value as string);
             }
           }
           const { error } = await query;
@@ -133,17 +144,14 @@ Deno.serve(async (req: Request) => {
           let query = supabase.from(table).delete();
           for (const [key, value] of Object.entries(filters)) {
             if (value !== undefined && value !== null) {
-              query = query.eq(key, value);
+              query = query.eq(key, value as string);
             }
           }
           const { error } = await query;
           if (error) throw error;
         } else {
           if (!id) throw new Error("ID required for delete");
-          const { error } = await supabase
-            .from(table)
-            .delete()
-            .eq("id", id);
+          const { error } = await supabase.from(table).delete().eq("id", id);
           if (error) throw error;
         }
         result = { success: true };
@@ -180,7 +188,7 @@ Deno.serve(async (req: Request) => {
         if (updateErr) throw updateErr;
 
         if (order?.telegram_user_id) {
-          const STATUS_LABELS = {
+          const STATUS_LABELS: Record<string, string> = {
             new: "Новый", processing: "В обработке", assembling: "В сборке",
             assembled: "Собран", shipping: "В доставке", delivered: "Доставлен",
             cancelled: "Отменён", return_requested: "Возврат", returned: "Возвращён",

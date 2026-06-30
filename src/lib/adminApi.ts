@@ -1,11 +1,24 @@
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
 const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
 
+function getAdminSession(): { admin_id: string; token: string } | null {
+  try {
+    const raw = localStorage.getItem('styletech_admin');
+    if (!raw) return null;
+    const admin = JSON.parse(raw);
+    if (!admin?.id || !admin?._token) return null;
+    return { admin_id: admin.id, token: admin._token };
+  } catch {
+    return null;
+  }
+}
+
 async function adminApiCall(action: string, table: string, params?: {
   data?: unknown;
   filters?: Record<string, unknown>;
   id?: string;
   retries?: number;
+  skipSession?: boolean; // for public read-only calls (customer-facing)
 }) {
   if (!supabaseUrl || !anonKey) {
     throw new Error('Supabase not configured');
@@ -16,6 +29,18 @@ async function adminApiCall(action: string, table: string, params?: {
 
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
     try {
+      // Attach admin_session for all mutation calls (not for public reads)
+      const MUTATIONS = ['insert', 'update', 'delete', 'updateOrderStatus'];
+      const admin_session = MUTATIONS.includes(action) && !params?.skipSession
+        ? getAdminSession()
+        : null;
+
+      const body: Record<string, unknown> = { action, table };
+      if (params?.data !== undefined) body.data = params.data;
+      if (params?.filters !== undefined) body.filters = params.filters;
+      if (params?.id !== undefined) body.id = params.id;
+      if (admin_session) body.admin_session = admin_session;
+
       const response = await fetch(`${supabaseUrl}/functions/v1/admin-api`, {
         method: 'POST',
         headers: {
@@ -23,7 +48,7 @@ async function adminApiCall(action: string, table: string, params?: {
           'Authorization': `Bearer ${anonKey}`,
           'Apikey': anonKey,
         },
-        body: JSON.stringify({ action, table, ...params }),
+        body: JSON.stringify(body),
       });
 
       if (!response.ok) {
@@ -44,276 +69,212 @@ async function adminApiCall(action: string, table: string, params?: {
   throw lastError;
 }
 
-export const adminQueries = {
-  // Orders
-  getOrders: async () => {
-    return adminApiCall('select', 'orders');
-  },
+// Public call — no session needed (customer-facing reads/writes that go via edge function)
+// Used for: creating reviews, returns, recording coupon usage, notifications
+function publicApiCall(action: string, table: string, params?: {
+  data?: unknown;
+  filters?: Record<string, unknown>;
+  id?: string;
+}) {
+  return adminApiCall(action, table, { ...params, skipSession: true });
+}
 
-  updateOrderStatus: async (orderId: string, status: string, changedBy: string) => {
-    return adminApiCall('updateOrderStatus', 'orders', {
+export const adminQueries = {
+  // ── Orders ──────────────────────────────────────────────────────────────
+  getOrders: () => adminApiCall('select', 'orders'),
+
+  updateOrderStatus: (orderId: string, status: string, changedBy: string) =>
+    adminApiCall('updateOrderStatus', 'orders', {
       id: orderId,
       data: { status, changed_by: changedBy },
-    });
-  },
+    }),
 
-  // Products
-  getProducts: async () => {
-    return adminApiCall('select', 'products');
-  },
+  getOrdersFiltered: (filters?: Record<string, unknown>) =>
+    adminApiCall('select', 'orders', { filters }),
 
-  createProduct: async (product: Record<string, unknown>) => {
-    return adminApiCall('insert', 'products', { data: product });
-  },
+  // ── Products ─────────────────────────────────────────────────────────────
+  getProducts: () => adminApiCall('select', 'products'),
 
-  updateProduct: async (id: string, updates: Record<string, unknown>) => {
-    return adminApiCall('update', 'products', { id, data: updates });
-  },
+  createProduct: (product: Record<string, unknown>) =>
+    adminApiCall('insert', 'products', { data: product }),
 
-  deleteProduct: async (id: string) => {
-    return adminApiCall('delete', 'products', { id });
-  },
+  updateProduct: (id: string, updates: Record<string, unknown>) =>
+    adminApiCall('update', 'products', { id, data: updates }),
 
-  // Banners
-  getBanners: async () => {
-    return adminApiCall('select', 'banners');
-  },
+  deleteProduct: (id: string) =>
+    adminApiCall('delete', 'products', { id }),
 
-  createBanner: async (banner: Record<string, unknown>) => {
-    return adminApiCall('insert', 'banners', { data: banner });
-  },
+  // ── Banners ──────────────────────────────────────────────────────────────
+  getBanners: () => adminApiCall('select', 'banners'),
 
-  updateBanner: async (id: string, updates: Record<string, unknown>) => {
-    return adminApiCall('update', 'banners', { id, data: updates });
-  },
+  createBanner: (banner: Record<string, unknown>) =>
+    adminApiCall('insert', 'banners', { data: banner }),
 
-  deleteBanner: async (id: string) => {
-    return adminApiCall('delete', 'banners', { id });
-  },
+  updateBanner: (id: string, updates: Record<string, unknown>) =>
+    adminApiCall('update', 'banners', { id, data: updates }),
 
-  // Delivery Zones
-  getDeliveryZones: async () => {
-    return adminApiCall('select', 'delivery_zones');
-  },
+  deleteBanner: (id: string) =>
+    adminApiCall('delete', 'banners', { id }),
 
-  createDeliveryZone: async (zone: Record<string, unknown>) => {
-    return adminApiCall('insert', 'delivery_zones', { data: zone });
-  },
+  // ── Delivery Zones ───────────────────────────────────────────────────────
+  getDeliveryZones: () => adminApiCall('select', 'delivery_zones'),
 
-  updateDeliveryZone: async (id: string, updates: Record<string, unknown>) => {
-    return adminApiCall('update', 'delivery_zones', { id, data: updates });
-  },
+  createDeliveryZone: (zone: Record<string, unknown>) =>
+    adminApiCall('insert', 'delivery_zones', { data: zone }),
 
-  deleteDeliveryZone: async (id: string) => {
-    return adminApiCall('delete', 'delivery_zones', { id });
-  },
+  updateDeliveryZone: (id: string, updates: Record<string, unknown>) =>
+    adminApiCall('update', 'delivery_zones', { id, data: updates }),
 
-  // Coupons
-  getCoupons: async () => {
-    return adminApiCall('select', 'coupons');
-  },
+  deleteDeliveryZone: (id: string) =>
+    adminApiCall('delete', 'delivery_zones', { id }),
 
-  createCoupon: async (coupon: Record<string, unknown>) => {
-    return adminApiCall('insert', 'coupons', { data: coupon });
-  },
+  // ── Coupons ──────────────────────────────────────────────────────────────
+  getCoupons: () => adminApiCall('select', 'coupons'),
 
-  updateCoupon: async (id: string, updates: Record<string, unknown>) => {
-    return adminApiCall('update', 'coupons', { id, data: updates });
-  },
+  createCoupon: (coupon: Record<string, unknown>) =>
+    adminApiCall('insert', 'coupons', { data: coupon }),
 
-  deleteCoupon: async (id: string) => {
-    return adminApiCall('delete', 'coupons', { id });
-  },
+  updateCoupon: (id: string, updates: Record<string, unknown>) =>
+    adminApiCall('update', 'coupons', { id, data: updates }),
 
-  recordCouponUsage: async (couponId: string, telegramUserId: number, orderId?: string) => {
-    return adminApiCall('insert', 'coupon_usage', { data: { coupon_id: couponId, telegram_user_id: telegramUserId, order_id: orderId ?? null } });
-  },
+  deleteCoupon: (id: string) =>
+    adminApiCall('delete', 'coupons', { id }),
 
-  // Returns
-  getReturns: async () => {
-    return adminApiCall('select', 'returns');
-  },
+  getCouponUsage: (filters?: Record<string, unknown>) =>
+    adminApiCall('select', 'coupon_usage', { filters }),
 
-  updateReturnStatus: async (id: string, updates: Record<string, unknown>) => {
-    return adminApiCall('update', 'returns', { id, data: updates });
-  },
+  // coupon_usage records are created by customers (no admin session)
+  recordCouponUsage: (couponId: string, telegramUserId: number, orderId?: string) =>
+    publicApiCall('insert', 'coupon_usage', {
+      data: { coupon_id: couponId, telegram_user_id: telegramUserId, order_id: orderId ?? null },
+    }),
 
-  createReturn: async (data: Record<string, unknown>) => {
-    return adminApiCall('insert', 'returns', { data });
-  },
+  // ── Returns ──────────────────────────────────────────────────────────────
+  getReturns: () => adminApiCall('select', 'returns'),
+  getReturnsFiltered: (filters?: Record<string, unknown>) =>
+    adminApiCall('select', 'returns', { filters }),
 
-  // Users
-  getUsers: async () => {
-    return adminApiCall('select', 'users');
-  },
+  updateReturnStatus: (id: string, updates: Record<string, unknown>) =>
+    adminApiCall('update', 'returns', { id, data: updates }),
 
-  // Audit Log
-  getAuditLog: async () => {
-    return adminApiCall('select', 'audit_log');
-  },
+  // Returns are created by customers (no admin session)
+  createReturn: (data: Record<string, unknown>) =>
+    publicApiCall('insert', 'returns', { data }),
 
-  // Admin Accounts
-  getAdminAccounts: async () => {
-    return adminApiCall('select', 'admin_accounts');
-  },
+  // ── Users ────────────────────────────────────────────────────────────────
+  getUsers: () => adminApiCall('select', 'users'),
 
-  createAdminAccount: async (account: Record<string, unknown>) => {
-    return adminApiCall('insert', 'admin_accounts', { data: account });
-  },
+  // Users are upserted by customers themselves (no admin session)
+  upsertUser: (data: Record<string, unknown>) =>
+    publicApiCall('insert', 'users', { data }),
 
-  updateAdminAccount: async (id: string, updates: Record<string, unknown>) => {
-    return adminApiCall('update', 'admin_accounts', { id, data: updates });
-  },
+  updateUser: (id: string, updates: Record<string, unknown>) =>
+    adminApiCall('update', 'users', { id, data: updates }),
 
-  // Product Collections
-  getCollections: async () => {
-    return adminApiCall('select', 'product_collections');
-  },
+  // ── Categories ───────────────────────────────────────────────────────────
+  getCategories: () => adminApiCall('select', 'categories'),
 
-  createCollection: async (collection: Record<string, unknown>) => {
-    return adminApiCall('insert', 'product_collections', { data: collection });
-  },
+  createCategory: (category: Record<string, unknown>) =>
+    adminApiCall('insert', 'categories', { data: category }),
 
-  updateCollection: async (id: string, updates: Record<string, unknown>) => {
-    return adminApiCall('update', 'product_collections', { id, data: updates });
-  },
+  updateCategory: (id: string, updates: Record<string, unknown>) =>
+    adminApiCall('update', 'categories', { id, data: updates }),
 
-  deleteCollection: async (id: string) => {
-    return adminApiCall('delete', 'product_collections', { id });
-  },
+  deleteCategory: (id: string) =>
+    adminApiCall('delete', 'categories', { id }),
 
-  // Reviews
-  getReviews: async () => {
-    return adminApiCall('select', 'reviews');
-  },
+  // ── Audit Log ────────────────────────────────────────────────────────────
+  getAuditLog: () => adminApiCall('select', 'audit_log'),
+  getAuditLogFiltered: (filters?: Record<string, unknown>) =>
+    adminApiCall('select', 'audit_log', { filters }),
 
-  updateReview: async (id: string, updates: Record<string, unknown>) => {
-    return adminApiCall('update', 'reviews', { id, data: updates });
-  },
+  insertAuditLog: (entry: Record<string, unknown>) =>
+    adminApiCall('insert', 'audit_log', { data: entry }),
 
-  // Categories
-  getCategories: async () => {
-    return adminApiCall('select', 'categories');
-  },
+  // ── Admin Accounts ───────────────────────────────────────────────────────
+  getAdminAccounts: () => adminApiCall('select', 'admin_accounts'),
 
-  createCategory: async (category: Record<string, unknown>) => {
-    return adminApiCall('insert', 'categories', { data: category });
-  },
+  createAdminAccount: (account: Record<string, unknown>) =>
+    adminApiCall('insert', 'admin_accounts', { data: account }),
 
-  updateCategory: async (id: string, updates: Record<string, unknown>) => {
-    return adminApiCall('update', 'categories', { id, data: updates });
-  },
+  updateAdminAccount: (id: string, updates: Record<string, unknown>) =>
+    adminApiCall('update', 'admin_accounts', { id, data: updates }),
 
-  deleteCategory: async (id: string) => {
-    return adminApiCall('delete', 'categories', { id });
-  },
+  // ── Collections ──────────────────────────────────────────────────────────
+  getCollections: () => adminApiCall('select', 'product_collections'),
 
-  // Audit Log
-  getAuditLogFiltered: async (filters?: Record<string, unknown>) => {
-    return adminApiCall('select', 'audit_log', { filters });
-  },
+  createCollection: (collection: Record<string, unknown>) =>
+    adminApiCall('insert', 'product_collections', { data: collection }),
 
-  insertAuditLog: async (entry: Record<string, unknown>) => {
-    return adminApiCall('insert', 'audit_log', { data: entry });
-  },
+  updateCollection: (id: string, updates: Record<string, unknown>) =>
+    adminApiCall('update', 'product_collections', { id, data: updates }),
 
-  // Users (registration & profile — routed through edge function for security)
-  upsertUser: async (data: Record<string, unknown>) => {
-    return adminApiCall('insert', 'users', { data });
-  },
+  deleteCollection: (id: string) =>
+    adminApiCall('delete', 'product_collections', { id }),
 
-  updateUser: async (id: string, updates: Record<string, unknown>) => {
-    return adminApiCall('update', 'users', { id, data: updates });
-  },
+  // ── Reviews ──────────────────────────────────────────────────────────────
+  getReviews: () => adminApiCall('select', 'reviews'),
 
-  // Favorites
-  addFavorite: async (data: Record<string, unknown>) => {
-    return adminApiCall('insert', 'favorites', { data });
-  },
+  updateReview: (id: string, updates: Record<string, unknown>) =>
+    adminApiCall('update', 'reviews', { id, data: updates }),
 
-  removeFavorite: async (filters: Record<string, unknown> | string) => {
+  approveReview: (id: string) =>
+    adminApiCall('update', 'reviews', { id, data: { is_approved: true } }),
+
+  rejectReview: (id: string) =>
+    adminApiCall('update', 'reviews', { id, data: { is_approved: false } }),
+
+  replyToReview: (id: string, reply: string) =>
+    adminApiCall('update', 'reviews', { id, data: { admin_reply: reply } }),
+
+  // Reviews created by customers (no admin session)
+  createReview: (data: Record<string, unknown>) =>
+    publicApiCall('insert', 'reviews', { data }),
+
+  // ── Referrals ────────────────────────────────────────────────────────────
+  createReferral: (data: Record<string, unknown>) =>
+    adminApiCall('insert', 'referrals', { data }),
+
+  updateReferral: (id: string, updates: Record<string, unknown>) =>
+    adminApiCall('update', 'referrals', { id, data: updates }),
+
+  getReferrals: (filters?: Record<string, unknown>) =>
+    adminApiCall('select', 'referrals', { filters }),
+
+  // ── Notifications ─────────────────────────────────────────────────────────
+  markNotificationRead: (id: string) =>
+    adminApiCall('update', 'notifications', { id, data: { is_read: true } }),
+
+  markAllNotificationsRead: (filters: Record<string, unknown>) =>
+    adminApiCall('update', 'notifications', { id: '__bulk__', data: { is_read: true }, filters }),
+
+  getNotifications: (filters?: Record<string, unknown>) =>
+    adminApiCall('select', 'notifications', { filters }),
+
+  createNotification: (data: Record<string, unknown>) =>
+    adminApiCall('insert', 'notifications', { data }),
+
+  // ── Product Relations ────────────────────────────────────────────────────
+  createProductRelation: (data: Record<string, unknown>) =>
+    adminApiCall('insert', 'product_relations', { data }),
+
+  deleteProductRelation: (id: string) =>
+    adminApiCall('delete', 'product_relations', { id }),
+
+  getProductRelations: (filters?: Record<string, unknown>) =>
+    adminApiCall('select', 'product_relations', { filters }),
+
+  // ── Favorites ────────────────────────────────────────────────────────────
+  addFavorite: (data: Record<string, unknown>) =>
+    adminApiCall('insert', 'favorites', { data }),
+
+  removeFavorite: (filters: Record<string, unknown> | string) => {
     if (typeof filters === 'string') {
       return adminApiCall('delete', 'favorites', { id: filters });
     }
     return adminApiCall('delete', 'favorites', { id: '__filter__', data: filters });
   },
 
-  getFavorites: async (filters: Record<string, unknown>) => {
-    return adminApiCall('select', 'favorites', { filters });
-  },
-
-  // Reviews (customer creation + admin moderation)
-  createReview: async (data: Record<string, unknown>) => {
-    return adminApiCall('insert', 'reviews', { data });
-  },
-
-  approveReview: async (id: string) => {
-    return adminApiCall('update', 'reviews', { id, data: { is_approved: true } });
-  },
-
-  rejectReview: async (id: string) => {
-    return adminApiCall('update', 'reviews', { id, data: { is_approved: false } });
-  },
-
-  replyToReview: async (id: string, reply: string) => {
-    return adminApiCall('update', 'reviews', { id, data: { admin_reply: reply } });
-  },
-
-  // Referrals
-  createReferral: async (data: Record<string, unknown>) => {
-    return adminApiCall('insert', 'referrals', { data });
-  },
-
-  updateReferral: async (id: string, updates: Record<string, unknown>) => {
-    return adminApiCall('update', 'referrals', { id, data: updates });
-  },
-
-  getReferrals: async (filters?: Record<string, unknown>) => {
-    return adminApiCall('select', 'referrals', { filters });
-  },
-
-  // Notifications
-  markNotificationRead: async (id: string) => {
-    return adminApiCall('update', 'notifications', { id, data: { is_read: true } });
-  },
-
-  markAllNotificationsRead: async (filters: Record<string, unknown>) => {
-    return adminApiCall('update', 'notifications', { id: '__bulk__', data: { is_read: true }, filters });
-  },
-
-  getNotifications: async (filters?: Record<string, unknown>) => {
-    return adminApiCall('select', 'notifications', { filters });
-  },
-
-  createNotification: async (data: Record<string, unknown>) => {
-    return adminApiCall('insert', 'notifications', { data });
-  },
-
-  // Product Relations
-  createProductRelation: async (data: Record<string, unknown>) => {
-    return adminApiCall('insert', 'product_relations', { data });
-  },
-
-  deleteProductRelation: async (id: string) => {
-    return adminApiCall('delete', 'product_relations', { id });
-  },
-
-  getProductRelations: async (filters?: Record<string, unknown>) => {
-    return adminApiCall('select', 'product_relations', { filters });
-  },
-
-  // Orders (filtered read for customer order history)
-  getOrdersFiltered: async (filters?: Record<string, unknown>) => {
-    return adminApiCall('select', 'orders', { filters });
-  },
-
-  // Returns (customer creation)
-  getReturnsFiltered: async (filters?: Record<string, unknown>) => {
-    return adminApiCall('select', 'returns', { filters });
-  },
-
-  // Coupon usage reads
-  getCouponUsage: async (filters?: Record<string, unknown>) => {
-    return adminApiCall('select', 'coupon_usage', { filters });
-  },
+  getFavorites: (filters: Record<string, unknown>) =>
+    adminApiCall('select', 'favorites', { filters }),
 };
