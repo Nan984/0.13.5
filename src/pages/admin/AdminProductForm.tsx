@@ -25,6 +25,11 @@ interface ProductForm {
   is_active: boolean;
 }
 
+interface OriginalData {
+  price: number;
+  stock: number;
+}
+
 const EMPTY_FORM: ProductForm = {
   name_ru: '',
   name_uz: '',
@@ -40,6 +45,28 @@ const EMPTY_FORM: ProductForm = {
   is_active: true,
 };
 
+async function notifyPriceDrop(productId: string) {
+  const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+  const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+  if (!supabaseUrl || !anonKey) return;
+  await fetch(`${supabaseUrl}/functions/v1/send-message`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${anonKey}`, Apikey: anonKey },
+    body: JSON.stringify({ product_id: productId, type: 'price_drop' }),
+  }).catch(() => {});
+}
+
+async function notifyStockAvailable(productId: string) {
+  const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+  const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+  if (!supabaseUrl || !anonKey) return;
+  await fetch(`${supabaseUrl}/functions/v1/send-message`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${anonKey}`, Apikey: anonKey },
+    body: JSON.stringify({ product_id: productId, type: 'stock_available' }),
+  }).catch(() => {});
+}
+
 export const AdminProductForm = () => {
   const navigate = useNavigate();
   const { id } = useParams();
@@ -48,6 +75,7 @@ export const AdminProductForm = () => {
 
   const { data: categories = [] } = useCategories();
   const [form, setForm] = useState<ProductForm>(EMPTY_FORM);
+  const [originalData, setOriginalData] = useState<OriginalData | null>(null);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [newImageUrl, setNewImageUrl] = useState('');
@@ -82,6 +110,7 @@ export const AdminProductForm = () => {
           stock: data.stock || 0,
           is_active: data.is_active ?? true,
         });
+        setOriginalData({ price: Number(data.price) || 0, stock: data.stock || 0 });
       }
     } catch {
       toast.error('Не удалось загрузить товар');
@@ -150,6 +179,15 @@ export const AdminProductForm = () => {
           entity_id: id,
           details: { name: form.name_ru, price: form.price },
         }).catch(() => {});
+
+        if (originalData) {
+          if (form.price < originalData.price) {
+            notifyPriceDrop(id!);
+          }
+          if (originalData.stock === 0 && form.stock > 0) {
+            notifyStockAvailable(id!);
+          }
+        }
       } else {
         await adminQueries.createProduct(payload);
         toast.success('Товар создан');
