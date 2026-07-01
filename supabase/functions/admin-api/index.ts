@@ -19,6 +19,14 @@ const ALLOWED_TABLES = [
 // ALL mutations require a valid admin session token
 const MUTATION_ACTIONS = ["insert", "update", "delete", "updateOrderStatus"];
 
+async function hashToken(str: string): Promise<string> {
+  const encoder = new TextEncoder();
+  const data = encoder.encode(str);
+  const hashBuffer = await crypto.subtle.digest("SHA-256", data);
+  const hashArray = Array.from(new Uint8Array(hashBuffer));
+  return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+}
+
 async function verifyAdminSession(
   supabase: ReturnType<typeof createClient>,
   admin_session: { admin_id: string; token: string } | undefined
@@ -26,11 +34,12 @@ async function verifyAdminSession(
   if (!admin_session?.admin_id || !admin_session?.token) {
     return { ok: false, error: "Admin session required" };
   }
+  const tokenHash = await hashToken(admin_session.token);
   const { data } = await supabase
     .from("admin_accounts")
     .select("id, is_active")
     .eq("id", admin_session.admin_id)
-    .eq("session_token", admin_session.token)
+    .eq("session_token", tokenHash)
     .eq("is_active", true)
     .maybeSingle();
   if (!data) {

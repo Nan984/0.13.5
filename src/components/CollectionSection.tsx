@@ -7,7 +7,7 @@ import type { ProductCollection } from '../lib/supabase/queries';
 
 interface CollectionSectionProps {
   collection: ProductCollection;
-  language: string;
+  language: 'ru' | 'uz';
 }
 
 export const CollectionSection = ({ collection, language }: CollectionSectionProps) => {

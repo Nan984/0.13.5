@@ -1,6 +1,6 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { Link } from 'react-router-dom';
-import { ArrowLeft, ChevronDown, Clock, User, MapPin, Package, History } from 'lucide-react';
+import { ArrowLeft, ChevronDown, Clock, User, MapPin, Package, History, Inbox, Hourglass, Archive } from 'lucide-react';
 import { Database, type StatusHistoryEntry, type CustomerInfo, type OrderItem } from '../../lib/supabase';
 import { getCurrentAdmin, ROLE_LABELS } from '../../lib/auth';
 import { formatPrice } from '../../lib/utils';
@@ -27,13 +27,15 @@ const StatusBadge = ({ status }: { status: string }) => {
   );
 };
 
+type TabType = 'new' | 'pending' | 'history';
+
 export const AdminOrders = () => {
   const admin = getCurrentAdmin();
   const [orders, setOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(true);
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [historyId, setHistoryId] = useState<string | null>(null);
-  const [filterStatus, setFilterStatus] = useState<string>('');
+  const [activeTab, setActiveTab] = useState<TabType>('new');
   const [updatingId, setUpdatingId] = useState<string | null>(null);
 
   useEffect(() => {
@@ -84,9 +86,23 @@ export const AdminOrders = () => {
     }
   };
 
-  const filtered = filterStatus
-    ? orders.filter((o) => o.status === filterStatus)
-    : orders;
+  const { newOrders, pendingOrders, historyOrders, counts } = useMemo(() => {
+    const newOrders = orders.filter(o => o.status === 'new');
+    const pendingOrders = orders.filter(o => ['processing', 'assembling', 'assembled', 'shipping', 'paid', 'shipped'].includes(o.status ?? ''));
+    const historyOrders = orders.filter(o => ['delivered', 'cancelled', 'returned', 'return_requested'].includes(o.status ?? ''));
+    return {
+      newOrders,
+      pendingOrders,
+      historyOrders,
+      counts: {
+        new: newOrders.length,
+        pending: pendingOrders.length,
+        history: historyOrders.length,
+      },
+    };
+  }, [orders]);
+
+  const displayedOrders = activeTab === 'new' ? newOrders : activeTab === 'pending' ? pendingOrders : historyOrders;
 
   if (!admin) return null;
 
@@ -120,47 +136,56 @@ export const AdminOrders = () => {
       </header>
 
       <main className="max-w-7xl mx-auto px-4 sm:px-6 py-6">
-        <div className="mb-5 flex gap-2 flex-wrap">
+        {/* Tab Navigation */}
+        <div className="mb-5 flex gap-2">
           <button
-            onClick={() => setFilterStatus('')}
-            className={`text-xs font-semibold px-3 py-1.5 rounded-full transition ${
-              filterStatus === ''
+            onClick={() => setActiveTab('new')}
+            className={`flex items-center gap-2 text-xs font-semibold px-4 py-2.5 rounded-xl transition ${
+              activeTab === 'new'
                 ? 'bg-surface-900 dark:bg-white text-white dark:text-surface-900'
-                : 'bg-white dark:bg-surface-800 border border-surface-200 dark:border-surface-700 text-surface-600 dark:text-surface-400'
+                : 'bg-white dark:bg-surface-800 border border-surface-200 dark:border-surface-700 text-surface-600 dark:text-surface-400 hover:bg-surface-50 dark:hover:bg-surface-700'
             }`}
           >
-            Все ({orders.length})
+            <Inbox className="w-4 h-4" />
+            Новые {counts.new > 0 && <span className="ml-1 px-1.5 py-0.5 bg-white/20 dark:bg-surface-900/20 rounded-full text-[10px]">{counts.new}</span>}
           </button>
-          {ORDER_STATUSES.map((s) => {
-            const count = orders.filter((o) => o.status === s.value).length;
-            if (count === 0) return null;
-            return (
-              <button
-                key={s.value}
-                onClick={() => setFilterStatus(s.value)}
-                className={`text-xs font-semibold px-3 py-1.5 rounded-full transition ${
-                  filterStatus === s.value
-                    ? `${s.color} ring-2 ring-offset-1 ring-current`
-                    : `${s.color} opacity-70 hover:opacity-100`
-                }`}
-              >
-                {s.label_ru} ({count})
-              </button>
-            );
-          })}
+          <button
+            onClick={() => setActiveTab('pending')}
+            className={`flex items-center gap-2 text-xs font-semibold px-4 py-2.5 rounded-xl transition ${
+              activeTab === 'pending'
+                ? 'bg-surface-900 dark:bg-white text-white dark:text-surface-900'
+                : 'bg-white dark:bg-surface-800 border border-surface-200 dark:border-surface-700 text-surface-600 dark:text-surface-400 hover:bg-surface-50 dark:hover:bg-surface-700'
+            }`}
+          >
+            <Hourglass className="w-4 h-4" />
+            В обработке {counts.pending > 0 && <span className="ml-1 px-1.5 py-0.5 bg-white/20 dark:bg-surface-900/20 rounded-full text-[10px]">{counts.pending}</span>}
+          </button>
+          <button
+            onClick={() => setActiveTab('history')}
+            className={`flex items-center gap-2 text-xs font-semibold px-4 py-2.5 rounded-xl transition ${
+              activeTab === 'history'
+                ? 'bg-surface-900 dark:bg-white text-white dark:text-surface-900'
+                : 'bg-white dark:bg-surface-800 border border-surface-200 dark:border-surface-700 text-surface-600 dark:text-surface-400 hover:bg-surface-50 dark:hover:bg-surface-700'
+            }`}
+          >
+            <Archive className="w-4 h-4" />
+            История {counts.history > 0 && <span className="ml-1 px-1.5 py-0.5 bg-white/20 dark:bg-surface-900/20 rounded-full text-[10px]">{counts.history}</span>}
+          </button>
         </div>
 
         {loading ? (
           <div className="flex items-center justify-center py-20">
             <span className="w-8 h-8 border-4 border-surface-900 border-t-transparent rounded-full animate-spin" />
           </div>
-        ) : filtered.length === 0 ? (
+        ) : displayedOrders.length === 0 ? (
           <div className="text-center py-20 text-surface-400 dark:text-surface-500 text-sm">
-            {filterStatus ? `Нет заказов со статусом "${getStatusInfo(filterStatus).label_ru}"` : 'Заказов пока нет'}
+            {activeTab === 'new' && 'Новых заказов нет'}
+            {activeTab === 'pending' && 'Нет заказов в обработке'}
+            {activeTab === 'history' && 'История заказов пуста'}
           </div>
         ) : (
           <div className="flex flex-col gap-3">
-            {filtered.map((order) => {
+            {displayedOrders.map((order) => {
               const expanded = expandedId === order.id;
               const showHistory = historyId === order.id;
               const info = order.customer_info as CustomerInfo;

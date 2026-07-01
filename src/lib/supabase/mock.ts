@@ -172,6 +172,8 @@ export const mockOrders: Order[] = [
     notes: null,
     transaction_id: null,
     paid_at: now,
+    coupon_id: null,
+    discount_amount: 0,
     status_history: [
       { status: 'new', changed_at: now, changed_by: 'System' },
       { status: 'delivered', changed_at: now, changed_by: 'Admin' },

@@ -73,7 +73,9 @@ export const favoriteQueries = {
     if (!isSupabaseConfigured || !telegramUserId) return [];
     const { data, error } = await supabase.from('favorites').select('product_id, products(id, name, slug, price, images, is_active, stock, sizes, colors)').eq('telegram_user_id', telegramUserId).order('created_at', { ascending: false });
     if (error) throw error;
-    return (data ?? []).map((row) => ({ ...row.products, favoriteId: row.product_id })) as (Product & { favoriteId: string })[];
+    return (data ?? [])
+      .filter((row) => row.products !== null)
+      .map((row: any) => ({ ...row.products, favoriteId: row.product_id })) as (Product & { favoriteId: string })[];
   },
 
   getProductIds: async (telegramUserId: number) => {
