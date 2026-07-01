@@ -55,7 +55,7 @@ export const BottomNav = () => {
                       strokeLinejoin="round"
                       className={cn(
                         "transition-all duration-200",
-                        isActive ? "stroke-surface-900 dark:stroke-white" : "stroke-surface-400 dark:stroke-surface-500"
+                        isActive ? "stroke-red-500 dark:stroke-red-400" : "stroke-surface-400 dark:stroke-surface-500"
                       )}
                     >
                       <defs>
