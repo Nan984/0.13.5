@@ -6,7 +6,7 @@ import { supabase } from '../../lib/supabase';
 import { getCurrentAdmin, AdminRole, ROLE_LABELS } from '../../lib/auth';
 import { formatPrice } from '../../lib/utils';
 import { auditLogQueries } from '../../lib/supabase/queries';
-import type { OrderItem } from '../../lib/supabase';
+import type { OrderItem, CustomerInfo } from '../../lib/supabase';
 import { adminQueries } from '../../lib/adminApi';
 
 interface AdminAccount {
@@ -79,7 +79,7 @@ export const AdminUsers = () => {
 
   // Order history
   const [ordersModal, setOrdersModal] = useState<{ telegramId: number; firstName: string } | null>(null);
-  const [userOrders, setUserOrders] = useState<any[]>([]);
+  const [userOrders, setUserOrders] = useState<Database['public']['Tables']['orders']['Row'][]>([]);
   const [ordersLoading, setOrdersLoading] = useState(false);
   const [expandedOrderId, setExpandedOrderId] = useState<string | null>(null);
   const [userSearch, setUserSearch] = useState('');
@@ -539,8 +539,8 @@ export const AdminUsers = () => {
                             </div>
                             {order.customer_info && (
                               <div className="pt-2 border-t border-surface-200 dark:border-surface-600 text-xs text-surface-500 dark:text-surface-400">
-                                <p>{(order.customer_info as any)?.name} · {(order.customer_info as any)?.phone}</p>
-                                <p>{(order.customer_info as any)?.city}, {(order.customer_info as any)?.address}</p>
+                                <p>{(order.customer_info as CustomerInfo)?.name} · {(order.customer_info as CustomerInfo)?.phone}</p>
+                                <p>{(order.customer_info as CustomerInfo)?.city}, {(order.customer_info as CustomerInfo)?.address}</p>
                               </div>
                             )}
                           </div>

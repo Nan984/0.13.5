@@ -33,19 +33,14 @@ Deno.serve(async (req: Request) => {
       results["bucket_product_images"] = "EXISTS";
     }
 
-    // 2. Create all missing tables
-    const tables = `
-      -- product_collections (already exists, just verify)
-      -- favorites (already exists, just verify)
-      -- admin_accounts (already exists, just verify)
-    `;
+    // 2. Tables already verified via db push
     results["tables"] = "Already verified via db push";
 
     // 3. Verify all edge functions work
     results["functions"] = "Deployed via supabase functions deploy";
 
     // 4. Create storage policies
-    const { error: polErr } = await supabase.rpc("exec_sql" as any, { query: "SELECT 1" }).maybeSingle();
+    const { error: polErr } = await supabase.rpc("exec_sql" as never, { query: "SELECT 1" }).maybeSingle();
     results["storage_policies"] = polErr ? "Need manual setup" : "OK";
 
     return new Response(

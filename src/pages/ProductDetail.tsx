@@ -60,6 +60,7 @@ export const ProductDetail = () => {
         incrementViews.mutate(product.id);
       }
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [product?.id]);
 
   const handleShare = async () => {

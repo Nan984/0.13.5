@@ -38,7 +38,7 @@ interface CheckoutRequest {
   init_data?: string;
 }
 
-async function verifyTelegramInitData(initData: string, botToken: string): Promise<boolean> {
+async function verifyTelegramInitData(initData: string): Promise<boolean> {
   try {
     const urlParams = new URLSearchParams(initData);
     const hash = urlParams.get('hash');
@@ -89,9 +89,8 @@ Deno.serve(async (req: Request) => {
     const body: CheckoutRequest = await req.json();
 
     // Verify Telegram init_data for security
-    const botToken = Deno.env.get("TELEGRAM_BOT_TOKEN");
-    if (botToken && body.init_data) {
-      const isValid = await verifyTelegramInitData(body.init_data, botToken);
+    if (Deno.env.get("TELEGRAM_BOT_TOKEN") && body.init_data) {
+      const isValid = await verifyTelegramInitData(body.init_data);
       if (!isValid) {
         return new Response(
           JSON.stringify({ error: "Invalid Telegram data" }),

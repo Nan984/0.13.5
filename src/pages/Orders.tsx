@@ -34,7 +34,7 @@ export const Orders = () => {
         const q = searchQuery.toLowerCase();
         const idMatch = order.id.toLowerCase().includes(q);
         const itemMatch = Array.isArray(order.items)
-          ? order.items.some((item: any) => {
+          ? order.items.some((item: OrderItem) => {
               const name = typeof item.name === 'object' ? (item.name as { ru: string; uz: string }).ru : item.name;
               return name?.toLowerCase().includes(q);
             })
@@ -242,7 +242,7 @@ export const Orders = () => {
               type="text"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder={language === 'ru' ? 'Поиск по номеру или товару...' : "Raqam yoki mahsulot bo\'yicha qidirish..."}
+              placeholder={language === 'ru' ? 'Поиск по номеру или товару...' : "Raqam yoki mahsulot bo'yicha qidirish..."}
               className="w-full pl-10 pr-4 py-2.5 bg-white dark:bg-surface-800 border border-surface-200 dark:border-surface-700 rounded-xl text-sm text-surface-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-surface-900"
             />
           </div>
